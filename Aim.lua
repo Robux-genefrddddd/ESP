@@ -1,137 +1,142 @@
-local Aimbot = {}
-
-local Camera = workspace.CurrentCamera
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+-- === MODULE AIMBOT ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
 
-local settings = {
-    Enabled = false,
-    TeamCheck = true,
-    WallCheck = true,
-    FOV = 140,
-    ShowFOV = true,
-    HitPart = "Head",
-    TriggerBot = false,
-    TriggerDelay = 0.01
-}
+local Aimbot = {}
+Aimbot.Enabled = false
+Aimbot.TeamCheck = true
+Aimbot.WallCheck = true
+Aimbot.FOV = 120
+Aimbot.ShowFOV = true
 
-local circle = Drawing.new("Circle")
-circle.Radius = settings.FOV
-circle.Color = Color3.fromRGB(255, 100, 0)
-circle.Thickness = 2
-circle.Filled = false
-circle.Transparency = 0.8
-circle.Visible = false
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Radius = Aimbot.FOV
+FOVCircle.Color = Color3.fromRGB(255, 100, 0)
+FOVCircle.Thickness = 2
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.8
+FOVCircle.Visible = false
 
-local hookConn
-local triggerConn
-
-local function getClosest()
-    local closest
-    local shortest = settings.FOV
-    local mouse = UserInputService:GetMouseLocation()
-
-    for _, plr in Players:GetPlayers() do
-        if plr == LocalPlayer then continue end
-        if not plr.Character then continue end
-        local hum = plr.Character:FindFirstChild("Humanoid")
-        if not hum or hum.Health <= 0 then continue end
-        if settings.TeamCheck and plr.Team == LocalPlayer.Team then continue end
-
-        local part = plr.Character:FindFirstChild(settings.HitPart) or plr.Character:FindFirstChild("Head")
-        if not part then continue end
-
-        local pos, vis = Camera:WorldToViewportPoint(part.Position)
-        if not vis then continue end
-
-        if settings.WallCheck then
-            local ray = Ray.new(Camera.CFrame.Position, part.Position - Camera.CFrame.Position)
-            local hit = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character})
-            if hit and not hit:IsDescendantOf(plr.Character) then continue end
-        end
-
-        local dist = (Vector2.new(pos.X, pos.Y) - mouse).Magnitude
-        if dist < shortest then
-            shortest = dist
-            closest = part
-        end
-    end
-
-    return closest
+local function IsPlayerValid(Player)
+    if not Player or Player == LocalPlayer then return false end
+    if not Player.Character then return false end
+    
+    local Humanoid = Player.Character:FindFirstChild("Humanoid")
+    local RootPart = Player.Character:FindFirstChild("HumanoidRootPart")
+    
+    if not Humanoid or Humanoid.Health <= 0 or not RootPart then return false end
+    if Aimbot.TeamCheck and Player.Team == LocalPlayer.Team then return false end
+    
+    return true
 end
 
-local function enableHook()
-    if hookConn then return end
+local function GetClosestPlayerInFOV()
+    if not Aimbot.Enabled then return nil end
+    
+    local Closest, ClosestDistance = nil, Aimbot.FOV
+    local MousePos = UserInputService:GetMouseLocation()
 
-    hookConn = hookmetamethod(game, "__namecall", function(self, ...)
-        local method = getnamecallmethod()
+    for _, Player in ipairs(Players:GetPlayers()) do
+        if not IsPlayerValid(Player) then continue end
 
-        if settings.Enabled and (method == "FindPartOnRayWithIgnoreList" or method == "Raycast") then
-            local target = getClosest()
-            if target then
-                local args = {...}
-                args[1] = Ray.new(Camera.CFrame.Position, (target.Position - Camera.CFrame.Position).Unit * 9999)
-                return self.FindPartOnRayWithIgnoreList(self, unpack(args))
+        local Head = Player.Character:FindFirstChild("Head")
+        if not Head then continue end
+
+        local ScreenPos, OnScreen = Camera:WorldToViewportPoint(Head.Position)
+        if not OnScreen then continue end
+
+        if Aimbot.WallCheck then
+            local RayParams = RaycastParams.new()
+            RayParams.FilterType = Enum.RaycastFilterType.Blacklist
+            RayParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+            
+            local Ray = workspace:Raycast(Camera.CFrame.Position, Head.Position - Camera.CFrame.Position, RayParams)
+            if Ray and not Ray.Instance:IsDescendantOf(Player.Character) then continue end
+        end
+
+        local Distance = (Vector2.new(ScreenPos.X, ScreenPos.Y) - MousePos).Magnitude
+        if Distance < ClosestDistance then
+            ClosestDistance = Distance
+            Closest = Head
+        end
+    end
+    return Closest
+end
+
+-- Silent Aim avec hook
+local OldNamecall
+OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local Args = {...}
+    local Method = getnamecallmethod()
+    
+    if Aimbot.Enabled and (Method == "FireServer" or Method == "InvokeServer") then
+        if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+            local Target = GetClosestPlayerInFOV()
+            if Target then
+                for i, v in pairs(Args) do
+                    if typeof(v) == "Vector3" then
+                        Args[i] = Target.Position
+                    elseif typeof(v) == "CFrame" then
+                        Args[i] = CFrame.new(Target.Position)
+                    end
+                end
             end
         end
+    end
+    
+    return OldNamecall(self, unpack(Args))
+end)
 
-        return hookConn(self, ...)
-    end)
-end
-
-local function disableHook()
-    hookConn = nil
-end
-
-local function startTrigger()
-    if triggerConn then return end
-
-    triggerConn = RunService.RenderStepped:Connect(function()
-        if not (settings.Enabled and settings.TriggerBot) then return end
-
-        if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and getClosest() then
-            mouse1press()
-            task.wait(settings.TriggerDelay)
-            mouse1release()
+-- Backup: Si le jeu utilise mouse.Hit
+local OldIndex
+OldIndex = hookmetamethod(game, "__index", function(self, key)
+    if Aimbot.Enabled and self:IsA("Mouse") and (key == "Hit" or key == "Target") then
+        if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+            local Target = GetClosestPlayerInFOV()
+            if Target then
+                if key == "Hit" then
+                    return CFrame.new(Target.Position)
+                elseif key == "Target" then
+                    return Target
+                end
+            end
         end
-    end)
+    end
+    return OldIndex(self, key)
+end)
+
+function Aimbot:SetEnabled(v)
+    self.Enabled = v
+    FOVCircle.Visible = v and self.ShowFOV
 end
 
-local function stopTrigger()
-    if triggerConn then
-        triggerConn:Disconnect()
-        triggerConn = nil
-    end
+function Aimbot:SetTeamCheck(v)
+    self.TeamCheck = v
 end
 
-function Aimbot:SetEnabled(state)
-    settings.Enabled = state
-
-    circle.Visible = state and settings.ShowFOV
-
-    if not state then
-        disableHook()
-        stopTrigger()
-        Notify("Aimbot", "Aimbot disabled")
-        return
-    end
-
-    enableHook()
-
-    if settings.TriggerBot then
-        startTrigger()
-    end
-
-    Notify("Aimbot", "Aimbot enabled")
+function Aimbot:SetVisibleCheck(v)
+    self.WallCheck = v
 end
 
+function Aimbot:SetFOV(v)
+    self.FOV = v
+    FOVCircle.Radius = v
+end
+
+function Aimbot:SetFOVVisible(v)
+    self.ShowFOV = v
+    FOVCircle.Visible = self.Enabled and v
+end
+
+-- Update FOV Circle
 RunService.RenderStepped:Connect(function()
-    if settings.Enabled and settings.ShowFOV then
-        circle.Position = UserInputService:GetMouseLocation()
-        circle.Radius = settings.FOV
+    if Aimbot.ShowFOV then
+        FOVCircle.Position = UserInputService:GetMouseLocation()
+        FOVCircle.Visible = Aimbot.Enabled and Aimbot.ShowFOV
     end
 end)
 
-_G.Aimbot = Aimbot
+return Aimbot
