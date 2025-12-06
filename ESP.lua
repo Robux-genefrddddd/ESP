@@ -1,305 +1,297 @@
+-- ESP Module for Roblox
+-- Standalone ESP system with BillboardGui
+-- GitHub: [Your Repository URL]
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
-local ESP = {}
-ESP.objects = {}
-ESP.skeleton = false
-ESP.highlight = false
-ESP.tracers = false
-ESP.rainbow = false
-ESP.teamCheck = false
-ESP.customColor = Color3.fromRGB(0, 255, 0)
-ESP._connection = nil
+-- ESP Configuration
+local ESP = {
+    Enabled = false,
+    TeamCheck = false,
+    ShowBoxes = true,
+    ShowNames = true,
+    ShowDistance = true,
+    ShowHealth = true,
+    RainbowMode = false,
+    Objects = {}
+}
 
-local localPlayer = Players.LocalPlayer
-
-local function isAnyEnabled()
-    return ESP.skeleton or ESP.highlight or ESP.tracers
+-- Internal Functions
+local function GetRainbow()
+    return Color3.fromHSV(tick() % 5 / 5, 1, 1)
 end
 
-local function cleanPlayer(player)
-    local data = ESP.objects[player]
-    if not data then
+local function RemoveESP(player)
+    if ESP.Objects[player] then
+        for _, obj in pairs(ESP.Objects[player]) do
+            pcall(function() obj:Destroy() end)
+        end
+        ESP.Objects[player] = nil
+    end
+end
+
+local function ClearAllESP()
+    for player, _ in pairs(ESP.Objects) do
+        RemoveESP(player)
+    end
+end
+
+local function CreateESP(player)
+    if player == LocalPlayer then return end
+    if ESP.TeamCheck and player.Team == LocalPlayer.Team then return end
+    
+    local char = player.Character
+    if not char then return end
+    
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    RemoveESP(player)
+    
+    -- BillboardGui pour ESP
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ESP"
+    billboard.AlwaysOnTop = true
+    billboard.Size = UDim2.new(0, 100, 0, 150)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.Adornee = root
+    billboard.Parent = root
+    
+    -- Box Frame
+    if ESP.ShowBoxes then
+        local box = Instance.new("Frame")
+        box.Name = "Box"
+        box.Size = UDim2.new(1, 0, 1, 0)
+        box.BackgroundTransparency = 1
+        box.BorderSizePixel = 2
+        box.BorderColor3 = ESP.RainbowMode and GetRainbow() or Color3.fromRGB(255, 0, 0)
+        box.Parent = billboard
+        
+        ESP.Objects[player] = ESP.Objects[player] or {}
+        table.insert(ESP.Objects[player], box)
+    end
+    
+    -- Name Text
+    if ESP.ShowNames then
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "Name"
+        nameLabel.Size = UDim2.new(1, 0, 0, 20)
+        nameLabel.Position = UDim2.new(0, 0, -0.15, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = player.Name
+        nameLabel.TextColor3 = ESP.RainbowMode and GetRainbow() or Color3.fromRGB(255, 255, 255)
+        nameLabel.TextStrokeTransparency = 0.5
+        nameLabel.TextSize = 14
+        nameLabel.Font = Enum.Font.SourceSansBold
+        nameLabel.Parent = billboard
+        
+        ESP.Objects[player] = ESP.Objects[player] or {}
+        table.insert(ESP.Objects[player], nameLabel)
+    end
+    
+    -- Distance Text
+    if ESP.ShowDistance then
+        local distLabel = Instance.new("TextLabel")
+        distLabel.Name = "Distance"
+        distLabel.Size = UDim2.new(1, 0, 0, 20)
+        distLabel.Position = UDim2.new(0, 0, 1.05, 0)
+        distLabel.BackgroundTransparency = 1
+        distLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        distLabel.TextStrokeTransparency = 0.5
+        distLabel.TextSize = 12
+        distLabel.Font = Enum.Font.SourceSans
+        distLabel.Parent = billboard
+        
+        ESP.Objects[player] = ESP.Objects[player] or {}
+        table.insert(ESP.Objects[player], distLabel)
+    end
+    
+    -- Health Bar
+    if ESP.ShowHealth then
+        local healthBar = Instance.new("Frame")
+        healthBar.Name = "HealthBar"
+        healthBar.Size = UDim2.new(0, 3, 1, 0)
+        healthBar.Position = UDim2.new(-0.05, 0, 0, 0)
+        healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        healthBar.BorderSizePixel = 1
+        healthBar.BorderColor3 = Color3.fromRGB(0, 0, 0)
+        healthBar.Parent = billboard
+        
+        ESP.Objects[player] = ESP.Objects[player] or {}
+        table.insert(ESP.Objects[player], healthBar)
+    end
+    
+    ESP.Objects[player] = ESP.Objects[player] or {}
+    table.insert(ESP.Objects[player], billboard)
+end
+
+local function UpdateESP()
+    if not ESP.Enabled then
+        ClearAllESP()
         return
     end
-
-    if data.Highlight then
-        pcall(function()
-            data.Highlight:Destroy()
-        end)
-    end
-
-    if data.Skeleton then
-        for _, line in ipairs(data.Skeleton) do
-            pcall(function()
-                line:Remove()
-            end)
-        end
-    end
-
-    if data.Tracer then
-        pcall(function()
-            data.Tracer:Remove()
-        end)
-    end
-
-    ESP.objects[player] = nil
-end
-
-local function fullClean()
-    for plr in pairs(ESP.objects) do
-        cleanPlayer(plr)
-    end
-end
-
-local function getCharacterParts(char)
-    if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Head") then
-        return nil
-    end
-
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    local rig = humanoid and humanoid.RigType == Enum.HumanoidRigType.R15 and "R15" or "R6"
-
-    local t = {
-        Head = char.Head,
-        Root = char.HumanoidRootPart,
-        RigType = rig
-    }
-
-    if rig == "R15" then
-        t.UpperTorso = char:FindFirstChild("UpperTorso")
-        t.LowerTorso = char:FindFirstChild("LowerTorso")
-        t.LeftUpperArm = char:FindFirstChild("LeftUpperArm")
-        t.LeftLowerArm = char:FindFirstChild("LeftLowerArm")
-        t.LeftHand = char:FindFirstChild("LeftHand")
-        t.RightUpperArm = char:FindFirstChild("RightUpperArm")
-        t.RightLowerArm = char:FindFirstChild("RightLowerArm")
-        t.RightHand = char:FindFirstChild("RightHand")
-        t.LeftUpperLeg = char:FindFirstChild("LeftUpperLeg")
-        t.LeftLowerLeg = char:FindFirstChild("LeftLowerLeg")
-        t.LeftFoot = char:FindFirstChild("LeftFoot")
-        t.RightUpperLeg = char:FindFirstChild("RightUpperLeg")
-        t.RightLowerLeg = char:FindFirstChild("RightLowerLeg")
-        t.RightFoot = char:FindFirstChild("RightFoot")
-    else
-        t.Torso = char:FindFirstChild("Torso")
-        t.LeftArm = char:FindFirstChild("Left Arm")
-        t.RightArm = char:FindFirstChild("Right Arm")
-        t.LeftLeg = char:FindFirstChild("Left Leg")
-        t.RightLeg = char:FindFirstChild("Right Leg")
-    end
-
-    return t
-end
-
-local function getCurrentColor()
-    if ESP.rainbow then
-        return ESP.customColor
-    else
-        return Color3.fromRGB(0, 255, 0)
-    end
-end
-
-local function updateESP()
-    if not isAnyEnabled() then
-        if next(ESP.objects) ~= nil then
-            fullClean()
-        end
-        return
-    end
-
-    local camera = workspace.CurrentCamera
-    local currentColor = getCurrentColor()
-
+    
     for _, player in ipairs(Players:GetPlayers()) do
-        if player == localPlayer then
-            continue
-        end
-
-        if ESP.teamCheck and player.Team == localPlayer.Team then
-            cleanPlayer(player)
-            continue
-        end
-
-        local character = player.Character
-        local parts = character and getCharacterParts(character)
-        if not parts then
-            cleanPlayer(player)
-            continue
-        end
-
-        if not ESP.objects[player] then
-            ESP.objects[player] = {}
-        end
-
-        if ESP.highlight then
-            if not ESP.objects[player].Highlight then
-                local hl = Instance.new("Highlight")
-                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                hl.Adornee = character
-                hl.Parent = character
-                ESP.objects[player].Highlight = hl
-            end
-            local hl = ESP.objects[player].Highlight
-            hl.FillColor = currentColor
-            hl.OutlineColor = currentColor
-        else
-            if ESP.objects[player].Highlight then
-                pcall(function()
-                    ESP.objects[player].Highlight:Destroy()
-                end)
-                ESP.objects[player].Highlight = nil
-            end
-        end
-
-        if ESP.skeleton then
-            if not ESP.objects[player].Skeleton then
-                local lines = {}
-                for i = 1, 14 do
-                    local line = Drawing.new("Line")
-                    line.Thickness = 1.5
-                    line.Visible = false
-                    table.insert(lines, line)
-                end
-                ESP.objects[player].Skeleton = lines
-            end
-
-            local lines = ESP.objects[player].Skeleton
-
-            local function draw(index, a, b)
-                local line = lines[index]
-                if not line then
-                    return
-                end
-                if not a or not b then
-                    line.Visible = false
-                    return
-                end
-                local p1, v1 = camera:WorldToViewportPoint(a.Position)
-                local p2, v2 = camera:WorldToViewportPoint(b.Position)
-                local visible = v1 and v2 and p1.Z > 0 and p2.Z > 0
-                line.Visible = visible
-                if visible then
-                    line.From = Vector2.new(p1.X, p1.Y)
-                    line.To = Vector2.new(p2.X, p2.Y)
-                    line.Color = currentColor
-                end
-            end
-
-            if parts.RigType == "R15" then
-                draw(1, parts.Head, parts.UpperTorso)
-                draw(2, parts.UpperTorso, parts.LowerTorso)
-
-                draw(3, parts.UpperTorso, parts.LeftUpperArm)
-                draw(4, parts.LeftUpperArm, parts.LeftLowerArm)
-                draw(5, parts.LeftLowerArm, parts.LeftHand)
-
-                draw(6, parts.UpperTorso, parts.RightUpperArm)
-                draw(7, parts.RightUpperArm, parts.RightLowerArm)
-                draw(8, parts.RightLowerArm, parts.RightHand)
-
-                draw(9, parts.LowerTorso, parts.LeftUpperLeg)
-                draw(10, parts.LeftUpperLeg, parts.LeftLowerLeg)
-                draw(11, parts.LeftLowerLeg, parts.LeftFoot)
-
-                draw(12, parts.LowerTorso, parts.RightUpperLeg)
-                draw(13, parts.RightUpperLeg, parts.RightLowerLeg)
-                draw(14, parts.RightLowerLeg, parts.RightFoot)
-            else
-                draw(1, parts.Head, parts.Torso)
-                draw(2, parts.Torso, parts.LeftArm)
-                draw(3, parts.Torso, parts.RightArm)
-                draw(4, parts.Torso, parts.LeftLeg)
-                draw(5, parts.Torso, parts.RightLeg)
-                for i = 6, 14 do
-                    local line = ESP.objects[player].Skeleton[i]
-                    if line then
-                        line.Visible = false
+        if player ~= LocalPlayer then
+            local char = player.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                if not ESP.Objects[player] then
+                    CreateESP(player)
+                else
+                    -- Update existing ESP
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                    local humanoid = char:FindFirstChildOfClass("Humanoid")
+                    
+                    if root and humanoid then
+                        local billboard = root:FindFirstChild("ESP")
+                        if billboard then
+                            -- Update distance
+                            local distLabel = billboard:FindFirstChild("Distance")
+                            if distLabel then
+                                local dist = (Camera.CFrame.Position - root.Position).Magnitude
+                                distLabel.Text = string.format("%.0f studs", dist)
+                            end
+                            
+                            -- Update health
+                            local healthBar = billboard:FindFirstChild("HealthBar")
+                            if healthBar and humanoid then
+                                local healthPercent = humanoid.Health / humanoid.MaxHealth
+                                healthBar.Size = UDim2.new(0, 3, healthPercent, 0)
+                                
+                                if healthPercent > 0.75 then
+                                    healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                                elseif healthPercent > 0.5 then
+                                    healthBar.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
+                                elseif healthPercent > 0.25 then
+                                    healthBar.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+                                else
+                                    healthBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+                                end
+                            end
+                            
+                            -- Update rainbow
+                            if ESP.RainbowMode then
+                                local box = billboard:FindFirstChild("Box")
+                                if box then
+                                    box.BorderColor3 = GetRainbow()
+                                end
+                                local nameLabel = billboard:FindFirstChild("Name")
+                                if nameLabel then
+                                    nameLabel.TextColor3 = GetRainbow()
+                                end
+                            end
+                        else
+                            CreateESP(player)
+                        end
                     end
                 end
-            end
-        else
-            if ESP.objects[player].Skeleton then
-                for _, line in ipairs(ESP.objects[player].Skeleton) do
-                    pcall(function()
-                        line:Remove()
-                    end)
-                end
-                ESP.objects[player].Skeleton = nil
-            end
-        end
-
-        if ESP.tracers then
-            if not ESP.objects[player].Tracer then
-                local trace = Drawing.new("Line")
-                trace.Thickness = 2
-                ESP.objects[player].Tracer = trace
-            end
-
-            local trace = ESP.objects[player].Tracer
-            local p, v = camera:WorldToViewportPoint(parts.Root.Position)
-            trace.Visible = v
-            if v then
-                trace.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
-                trace.To = Vector2.new(p.X, p.Y)
-                trace.Color = currentColor
-            end
-        else
-            if ESP.objects[player].Tracer then
-                pcall(function()
-                    ESP.objects[player].Tracer:Remove()
-                end)
-                ESP.objects[player].Tracer = nil
+            else
+                RemoveESP(player)
             end
         end
     end
 end
 
-local function ensureConnection()
-    if ESP._connection then
-        return
+-- Update Loop
+RunService.Heartbeat:Connect(function()
+    if ESP.Enabled then
+        UpdateESP()
     end
-    ESP._connection = RunService.Heartbeat:Connect(function()
-        pcall(updateESP)
-    end)
-    Players.PlayerRemoving:Connect(cleanPlayer)
-end
+end)
 
-function ESP:SetSkeleton(enabled)
-    self.skeleton = enabled and true or false
-    ensureConnection()
-end
+-- Player Events
+Players.PlayerAdded:Connect(function(player)
+    if ESP.Enabled then
+        player.CharacterAdded:Connect(function()
+            task.wait(0.5)
+            CreateESP(player)
+        end)
+    end
+end)
 
-function ESP:SetHighlight(enabled)
-    self.highlight = enabled and true or false
-    ensureConnection()
-end
+Players.PlayerRemoving:Connect(function(player)
+    RemoveESP(player)
+end)
 
-function ESP:SetTracers(enabled)
-    self.tracers = enabled and true or false
-    ensureConnection()
-end
-
-function ESP:SetRainbow(enabled)
-    self.rainbow = enabled and true or false
-end
-
-function ESP:SetTeamCheck(enabled)
-    self.teamCheck = enabled and true or false
-end
-
-function ESP:SetColor(color)
-    if typeof(color) == "Color3" then
-        self.customColor = color
+-- Public API
+function ESP:Toggle(state)
+    self.Enabled = state
+    if state then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+                CreateESP(player)
+            end
+        end
+    else
+        ClearAllESP()
     end
 end
 
-function ESP:DisableAll()
-    self.skeleton = false
-    self.highlight = false
-    self.tracers = false
-    self.rainbow = false
-    fullClean()
+function ESP:SetTeamCheck(state)
+    self.TeamCheck = state
+    ClearAllESP()
+    if self.Enabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+                CreateESP(player)
+            end
+        end
+    end
+end
+
+function ESP:SetBoxes(state)
+    self.ShowBoxes = state
+    ClearAllESP()
+    if self.Enabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+                CreateESP(player)
+            end
+        end
+    end
+end
+
+function ESP:SetNames(state)
+    self.ShowNames = state
+    ClearAllESP()
+    if self.Enabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+                CreateESP(player)
+            end
+        end
+    end
+end
+
+function ESP:SetDistance(state)
+    self.ShowDistance = state
+    ClearAllESP()
+    if self.Enabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+                CreateESP(player)
+            end
+        end
+    end
+end
+
+function ESP:SetHealth(state)
+    self.ShowHealth = state
+    ClearAllESP()
+    if self.Enabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+                CreateESP(player)
+            end
+        end
+    end
+end
+
+function ESP:SetRainbow(state)
+    self.RainbowMode = state
 end
 
 return ESP
