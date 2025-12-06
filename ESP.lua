@@ -8,6 +8,7 @@ ESP.highlight = false
 ESP.tracers = false
 ESP.rainbow = false
 ESP.teamCheck = false
+ESP.customColor = Color3.fromRGB(0, 255, 0)
 ESP._connection = nil
 
 local localPlayer = Players.LocalPlayer
@@ -23,7 +24,9 @@ local function cleanPlayer(player)
     end
 
     if data.Highlight then
-        data.Highlight:Destroy()
+        pcall(function()
+            data.Highlight:Destroy()
+        end)
     end
 
     if data.Skeleton then
@@ -89,6 +92,14 @@ local function getCharacterParts(char)
     return t
 end
 
+local function getCurrentColor()
+    if ESP.rainbow then
+        return ESP.customColor
+    else
+        return Color3.fromRGB(0, 255, 0)
+    end
+end
+
 local function updateESP()
     if not isAnyEnabled() then
         if next(ESP.objects) ~= nil then
@@ -98,6 +109,7 @@ local function updateESP()
     end
 
     local camera = workspace.CurrentCamera
+    local currentColor = getCurrentColor()
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player == localPlayer then
@@ -120,8 +132,6 @@ local function updateESP()
             ESP.objects[player] = {}
         end
 
-        local rainbowColor = ESP.rainbow and Color3.fromHSV((tick() % 5) / 5, 1, 1) or Color3.fromRGB(0, 255, 0)
-
         if ESP.highlight then
             if not ESP.objects[player].Highlight then
                 local hl = Instance.new("Highlight")
@@ -131,11 +141,13 @@ local function updateESP()
                 ESP.objects[player].Highlight = hl
             end
             local hl = ESP.objects[player].Highlight
-            hl.FillColor = rainbowColor
-            hl.OutlineColor = rainbowColor
+            hl.FillColor = currentColor
+            hl.OutlineColor = currentColor
         else
             if ESP.objects[player].Highlight then
-                ESP.objects[player].Highlight:Destroy()
+                pcall(function()
+                    ESP.objects[player].Highlight:Destroy()
+                end)
                 ESP.objects[player].Highlight = nil
             end
         end
@@ -170,7 +182,7 @@ local function updateESP()
                 if visible then
                     line.From = Vector2.new(p1.X, p1.Y)
                     line.To = Vector2.new(p2.X, p2.Y)
-                    line.Color = rainbowColor
+                    line.Color = currentColor
                 end
             end
 
@@ -230,7 +242,7 @@ local function updateESP()
             if v then
                 trace.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
                 trace.To = Vector2.new(p.X, p.Y)
-                trace.Color = rainbowColor
+                trace.Color = currentColor
             end
         else
             if ESP.objects[player].Tracer then
@@ -248,7 +260,7 @@ local function ensureConnection()
         return
     end
     ESP._connection = RunService.Heartbeat:Connect(function()
-        updateESP()
+        pcall(updateESP)
     end)
     Players.PlayerRemoving:Connect(cleanPlayer)
 end
@@ -276,10 +288,17 @@ function ESP:SetTeamCheck(enabled)
     self.teamCheck = enabled and true or false
 end
 
+function ESP:SetColor(color)
+    if typeof(color) == "Color3" then
+        self.customColor = color
+    end
+end
+
 function ESP:DisableAll()
     self.skeleton = false
     self.highlight = false
     self.tracers = false
+    self.rainbow = false
     fullClean()
 end
 
