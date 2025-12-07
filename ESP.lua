@@ -1,4 +1,3 @@
--- ESP Module for Roblox - WORKING VERSION
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
