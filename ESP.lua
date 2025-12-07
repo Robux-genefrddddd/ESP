@@ -1,6 +1,5 @@
--- ESP Module for Roblox
+-- ESP Module for Roblox - FIXED VERSION
 -- Standalone ESP system with BillboardGui
--- GitHub: [Your Repository URL]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -51,7 +50,6 @@ local function CreateESP(player)
     
     RemoveESP(player)
     
-    -- BillboardGui pour ESP
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "ESP"
     billboard.AlwaysOnTop = true
@@ -60,21 +58,20 @@ local function CreateESP(player)
     billboard.Adornee = root
     billboard.Parent = root
     
-    -- Box Frame
+    ESP.Objects[player] = {}
+    table.insert(ESP.Objects[player], billboard)
+    
     if ESP.ShowBoxes then
         local box = Instance.new("Frame")
         box.Name = "Box"
         box.Size = UDim2.new(1, 0, 1, 0)
         box.BackgroundTransparency = 1
         box.BorderSizePixel = 2
-        box.BorderColor3 = ESP.RainbowMode and GetRainbow() or Color3.fromRGB(255, 0, 0)
+        box.BorderColor3 = Color3.fromRGB(255, 0, 0)
         box.Parent = billboard
-        
-        ESP.Objects[player] = ESP.Objects[player] or {}
         table.insert(ESP.Objects[player], box)
     end
     
-    -- Name Text
     if ESP.ShowNames then
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Name = "Name"
@@ -82,17 +79,14 @@ local function CreateESP(player)
         nameLabel.Position = UDim2.new(0, 0, -0.15, 0)
         nameLabel.BackgroundTransparency = 1
         nameLabel.Text = player.Name
-        nameLabel.TextColor3 = ESP.RainbowMode and GetRainbow() or Color3.fromRGB(255, 255, 255)
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
         nameLabel.TextStrokeTransparency = 0.5
         nameLabel.TextSize = 14
         nameLabel.Font = Enum.Font.SourceSansBold
         nameLabel.Parent = billboard
-        
-        ESP.Objects[player] = ESP.Objects[player] or {}
         table.insert(ESP.Objects[player], nameLabel)
     end
     
-    -- Distance Text
     if ESP.ShowDistance then
         local distLabel = Instance.new("TextLabel")
         distLabel.Name = "Distance"
@@ -104,12 +98,9 @@ local function CreateESP(player)
         distLabel.TextSize = 12
         distLabel.Font = Enum.Font.SourceSans
         distLabel.Parent = billboard
-        
-        ESP.Objects[player] = ESP.Objects[player] or {}
         table.insert(ESP.Objects[player], distLabel)
     end
     
-    -- Health Bar
     if ESP.ShowHealth then
         local healthBar = Instance.new("Frame")
         healthBar.Name = "HealthBar"
@@ -119,13 +110,8 @@ local function CreateESP(player)
         healthBar.BorderSizePixel = 1
         healthBar.BorderColor3 = Color3.fromRGB(0, 0, 0)
         healthBar.Parent = billboard
-        
-        ESP.Objects[player] = ESP.Objects[player] or {}
         table.insert(ESP.Objects[player], healthBar)
     end
-    
-    ESP.Objects[player] = ESP.Objects[player] or {}
-    table.insert(ESP.Objects[player], billboard)
 end
 
 local function UpdateESP()
@@ -138,57 +124,30 @@ local function UpdateESP()
         if player ~= LocalPlayer then
             local char = player.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
-                if not ESP.Objects[player] then
-                    CreateESP(player)
-                else
-                    -- Update existing ESP
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    local humanoid = char:FindFirstChildOfClass("Humanoid")
-                    
-                    if root and humanoid then
-                        local billboard = root:FindFirstChild("ESP")
-                        if billboard then
-                            -- Update distance
-                            local distLabel = billboard:FindFirstChild("Distance")
-                            if distLabel then
-                                local dist = (Camera.CFrame.Position - root.Position).Magnitude
-                                distLabel.Text = string.format("%.0f studs", dist)
-                            end
-                            
-                            -- Update health
-                            local healthBar = billboard:FindFirstChild("HealthBar")
-                            if healthBar and humanoid then
-                                local healthPercent = humanoid.Health / humanoid.MaxHealth
-                                healthBar.Size = UDim2.new(0, 3, healthPercent, 0)
-                                
-                                if healthPercent > 0.75 then
-                                    healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-                                elseif healthPercent > 0.5 then
-                                    healthBar.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
-                                elseif healthPercent > 0.25 then
-                                    healthBar.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
-                                else
-                                    healthBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-                                end
-                            end
-                            
-                            -- Update rainbow
-                            if ESP.RainbowMode then
-                                local box = billboard:FindFirstChild("Box")
-                                if box then
-                                    box.BorderColor3 = GetRainbow()
-                                end
-                                local nameLabel = billboard:FindFirstChild("Name")
-                                if nameLabel then
-                                    nameLabel.TextColor3 = GetRainbow()
-                                end
-                            end
-                        else
-                            CreateESP(player)
+                local root = char:FindFirstChild("HumanoidRootPart")
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                
+                if root and humanoid then
+                    local billboard = root:FindFirstChild("ESP")
+                    if billboard then
+                        local distLabel = billboard:FindFirstChild("Distance")
+                        if distLabel and ESP.ShowDistance then
+                            local dist = (Camera.CFrame.Position - root.Position).Magnitude
+                            distLabel.Text = string.format("%.0f studs", dist)
                         end
-                    end
-                end
-            else
+                        
+                        local healthBar = billboard:FindFirstChild("HealthBar")
+                        if healthBar and humanoid and ESP.ShowHealth then
+                            local healthPercent = humanoid.Health / humanoid.MaxHealth
+                            healthBar.Size = UDim2.new(0, 3, healthPercent, 0)
+                            
+                            if healthPercent > 0.75 then
+                                healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                            elseif healthPercent > 0.5 then
+                                healthBar.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
+                            elseif healthPercent > 0.25 then
+                                healthBar.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+                            else
                 RemoveESP(player)
             end
         end
@@ -207,7 +166,9 @@ Players.PlayerAdded:Connect(function(player)
     if ESP.Enabled then
         player.CharacterAdded:Connect(function()
             task.wait(0.5)
-            CreateESP(player)
+            if ESP.Enabled then
+                CreateESP(player)
+            end
         end)
     end
 end)
@@ -232,8 +193,9 @@ end
 
 function ESP:SetTeamCheck(state)
     self.TeamCheck = state
-    ClearAllESP()
     if self.Enabled then
+        ClearAllESP()
+        task.wait(0.1)
         for _, player in ipairs(Players:GetPlayers()) do
             if player.Character then
                 CreateESP(player)
@@ -244,8 +206,9 @@ end
 
 function ESP:SetBoxes(state)
     self.ShowBoxes = state
-    ClearAllESP()
     if self.Enabled then
+        ClearAllESP()
+        task.wait(0.1)
         for _, player in ipairs(Players:GetPlayers()) do
             if player.Character then
                 CreateESP(player)
@@ -256,8 +219,9 @@ end
 
 function ESP:SetNames(state)
     self.ShowNames = state
-    ClearAllESP()
     if self.Enabled then
+        ClearAllESP()
+        task.wait(0.1)
         for _, player in ipairs(Players:GetPlayers()) do
             if player.Character then
                 CreateESP(player)
@@ -268,8 +232,9 @@ end
 
 function ESP:SetDistance(state)
     self.ShowDistance = state
-    ClearAllESP()
     if self.Enabled then
+        ClearAllESP()
+        task.wait(0.1)
         for _, player in ipairs(Players:GetPlayers()) do
             if player.Character then
                 CreateESP(player)
@@ -280,8 +245,9 @@ end
 
 function ESP:SetHealth(state)
     self.ShowHealth = state
-    ClearAllESP()
     if self.Enabled then
+        ClearAllESP()
+        task.wait(0.1)
         for _, player in ipairs(Players:GetPlayers()) do
             if player.Character then
                 CreateESP(player)
@@ -294,4 +260,24 @@ function ESP:SetRainbow(state)
     self.RainbowMode = state
 end
 
-return ESP
+return ESP                healthBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+                            end
+                        end
+                        
+                        if ESP.RainbowMode then
+                            local box = billboard:FindFirstChild("Box")
+                            if box then
+                                box.BorderColor3 = GetRainbow()
+                            end
+                            local nameLabel = billboard:FindFirstChild("Name")
+                            if nameLabel then
+                                nameLabel.TextColor3 = GetRainbow()
+                            end
+                        end
+                    else
+                        if not ESP.Objects[player] then
+                            CreateESP(player)
+                        end
+                    end
+                end
+            else
